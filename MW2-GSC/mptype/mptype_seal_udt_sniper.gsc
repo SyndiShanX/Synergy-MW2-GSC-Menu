@@ -1,0 +1,13 @@
+/********************************************************
+ * Decompiled by FreeTheTech101 and Edited by SyndiShanX
+ * Script: mptype\mptype_seal_udt_sniper.gsc
+********************************************************/
+
+main() {
+
+  character\mp_character_seal_udt_sniper::main();
+}
+
+precache() {
+  character\mp_character_seal_udt_sniper::precache();
+}
