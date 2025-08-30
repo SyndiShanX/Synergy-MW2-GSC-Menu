@@ -14,7 +14,7 @@ If you have any Issues/Suggestions, please Submit them in [Issues](https://githu
 
 * Download [Synergy.zip](https://syndishanx.github.io/Synergy-MW2-GSC-Menu/Synergy.zip)
 
-* Place the `mods` folder into the game folder (Where iw4x.exe is)
+* Extract the ZIP and Place the `Synergy` Folder into the `mods` folder in the game files
 
 ## Credits
 
