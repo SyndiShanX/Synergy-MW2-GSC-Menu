@@ -356,7 +356,7 @@ create_rainbow_color() {
 		}
 
 		level.rainbow_color = (r/255, g/255, b/255);
-		wait .05;
+		wait 0.05;
 	}
 }
 
@@ -366,7 +366,7 @@ start_rainbow() {
 	while(isDefined(self)) {
 		self fadeOverTime(.05);
 		self.color = level.rainbow_color;
-		wait .05;
+		wait 0.05;
 	}
 }
 
@@ -664,7 +664,7 @@ is_locked() {
 
 empty_option() {
 	option = strTok("Nothing To See Here!;Quiet Here, Isn't It?;Oops, Nothing Here Yet!;Bit Empty, Don't You Think?", ";");
-	return option[randomInt(option.size)];
+	return option[randomint(option.size)];
 }
 
 empty_function() {}
@@ -1487,7 +1487,6 @@ god_mode() {
 
 frag_no_clip() {
 	self endon("disconnect");
-
 	self endon("game_ended");
 
 	if(!isDefined(self.frag_no_clip)) {
@@ -1499,7 +1498,7 @@ frag_no_clip() {
 					self thread frag_no_clip_loop();
 				}
 			}
-			wait .05;
+			wait 0.05;
 		}
 	} else {
 		self.frag_no_clip = undefined;
@@ -1509,8 +1508,8 @@ frag_no_clip() {
 
 frag_no_clip_loop() {
 	self endon("disconnect");
-
 	self endon("noclip_end");
+
 	self disableWeapons();
 	self disableOffHandWeapons();
 	self.frag_no_clip_loop = true;
@@ -1534,7 +1533,7 @@ frag_no_clip_loop() {
 		if(self meleeButtonPressed()) {
 			break;
 		}
-		wait .05;
+		wait 0.05;
 	}
 
 	clip delete();
@@ -1588,7 +1587,6 @@ forge_mode() {
 
 forge_mode_loop() {
 	self endon("disconnect");
-
 	self endon("stop_forge_mode");
 
 	while (true) {
@@ -1598,33 +1596,33 @@ forge_mode_loop() {
 				while (self adsButtonPressed()) {
 					trace["entity"] moveTo(self getTagOrigin("j_head") + anglesToForward(self getPlayerAngles()) * 200, .5);
 					trace["entity"].origin = self getTagOrigin("j_head") + anglesToForward(self getPlayerAngles()) * 200;
-					wait .01;
+					wait 0.01;
 				}
 			}
 			if(self attackButtonPressed()) {
 				while (self attackButtonPressed()) {
 					trace["entity"] rotatePitch(1, .01);
-					wait .01;
+					wait 0.01;
 				}
 			}
 			if(self fragButtonPressed()) {
 				while (self fragButtonPressed()) {
 					trace["entity"] rotateYaw(1, .01);
-					wait .01;
+					wait 0.01;
 				}
 			}
 			if(self secondaryOffhandButtonPressed()) {
 				while (self secondaryOffhandButtonPressed()) {
 					trace["entity"] rotateRoll(1, .01);
-					wait .01;
+					wait 0.01;
 				}
 			}
 			if(!isPlayer(trace["entity"]) && self meleeButtonPressed()) {
 				trace["entity"] delete();
-				wait .2;
+				wait 0.2;
 			}
 		}
-		wait .05;
+		wait 0.05;
 	}
 }
 
@@ -1645,11 +1643,11 @@ fullbright() {
 	if(self.fullbright) {
 		iPrintString("Fullbright [^2ON^7]");
 		setDvar("r_fullbright", 1);
-		wait .01;
+		wait 0.01;
 	} else {
 		iPrintString("Fullbright [^1OFF^7]");
 		setDvar("r_fullbright", 0);
-		wait .01;
+		wait 0.01;
 	}
 }
 
@@ -1666,7 +1664,7 @@ third_person() {
 
 set_vision(vision) {
 	self visionSetNakedForPlayer("", 0.1);
-	wait .25;
+	wait 0.25;
 	self visionSetNakedForPlayer(vision, 0.1);
 }
 
