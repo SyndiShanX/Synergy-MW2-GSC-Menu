@@ -40,9 +40,9 @@ initial_variable() {
 	self set_menu();
 	self set_title();
 
-	self.menu_color_red = 255;
-	self.menu_color_green = 255;
-	self.menu_color_blue = 255;
+	self.menu_color_red = 0;
+	self.menu_color_green = 0;
+	self.menu_color_blue = 0;
 	self.color_theme = "rainbow";
 
 	self.syn["visions"][0] = strTok("ac130;ac130_inverted;aftermath;airplane;airport;airport_death;airport_exterior;airport_green;airport_intro;airport_stairs;ambush;armada;armada_water;bigcity_destroyed;blackout;blackout_nvg;bog;boneyard;bridge;cargoship;cheat_bw;cheat_bw_contrast;cheat_bw_invert;cheat_chaplinnight;cheat_contrast;cheat_invert;cheat_invert_contrast;cliffhanger;dcemp;dcemp_emp;default;default_night;default_night_mp;end_game;introscreen;mp_afghan;mpnuke;mpnuke_aftermath;mpoutro;near_death;near_death_mp;thermal_mp", ";");
