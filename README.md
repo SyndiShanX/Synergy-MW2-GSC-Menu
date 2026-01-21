@@ -1,6 +1,6 @@
 # Synergy MW2 GSC Menu
 
-A Modern Warfare 2 GSC Mod Menu
+A Modern Warfare 2 GSC Mod Menu using IW4x
 
 This Menu is a Work-In-Progress, so expect changes and possibly some Bugs
 
