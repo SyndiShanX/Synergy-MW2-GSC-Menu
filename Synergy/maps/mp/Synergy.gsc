@@ -3,48 +3,47 @@
 #include common_scripts\utility;
 
 init() {
-	level initial_precache();
+	precacheshader("hud_arrow_right");
+
 	level thread player_connect();
 	level thread create_rainbow_color();
+
+	wait 0.5;
 
 	level.originalCallbackPlayerDamage = level.callbackPlayerDamage; //doktorSAS - Retropack
 	level.callbackPlayerDamage = ::player_damage_callback; // Retropack
 	level.rankedmatch = 1; // Retropack
-
-	level thread session_expired();
 }
 
-initial_precache() {
-	precacheshader("hud_arrow_right");
-}
-
-initial_variable() {
-	self.menu = [];
-	self.cursor = [];
-	self.slider = [];
+initial_variables() {
+	self.in_menu = false;
+	self.hud_created = false;
+	self.loaded_offset = false;
+	self.option_limit = 7;
+	self.current_menu = "Synergy";
+	self.structure = [];
 	self.previous = [];
-	self.previous_option = undefined;
+	self.saved_index = [];
+	self.saved_offset = [];
+	self.saved_trigger = [];
+	self.slider = [];
 
 	self.font = "default";
-	self.font_scale = 0.9;
-	self.option_limit = 6;
-	self.option_spacing = 16;
+	self.font_scale = 1;
 	self.x_offset = 175;
 	self.y_offset = 160;
-	self.width = -20;
-	self.interaction_enabled = true;
-	self.description_enabled = true;
-	self.randomizing_enabled = true;
-	self.scrolling_buffer = 3;
 
-	self set_menu();
-	self set_title();
-
+	self.color_theme = "rainbow";
 	self.menu_color_red = 0;
 	self.menu_color_green = 0;
 	self.menu_color_blue = 0;
-	self.color_theme = "rainbow";
 
+	self.cursor_index = 0;
+	self.scrolling_offset = 0;
+	self.previous_scrolling_offset = 0;
+	self.description_height = 0;
+	self.previous_option = undefined;
+	
 	self.syn["visions"][0] = strTok("ac130;ac130_inverted;aftermath;airplane;airport;airport_death;airport_exterior;airport_green;airport_intro;airport_stairs;ambush;armada;armada_water;bigcity_destroyed;blackout;blackout_nvg;bog;boneyard;bridge;cargoship;cheat_bw;cheat_bw_contrast;cheat_bw_invert;cheat_chaplinnight;cheat_contrast;cheat_invert;cheat_invert_contrast;cliffhanger;dcemp;dcemp_emp;default;default_night;default_night_mp;end_game;introscreen;mp_afghan;mpnuke;mpnuke_aftermath;mpoutro;near_death;near_death_mp;thermal_mp", ";");
 	self.syn["visions"][1] = strTok("AC-130;AC-130 inverted;Aftermath;Airplane;Airport;Airport Death;Airport Exterior;Airport Green;Airport Intro;Airport Stairs;Ambush;Armada;Armada Water;Big City Destroyed;Blackout;Blackout Nvg;Bog;Boneyard;Bridge;Cargo Ship;Cheat BW;Cheat BW Contrast;Cheat BW Invert;Cheat Chaplin Night;Cheat Contrast;Cheat Invert;Cheat Invert Contrast;Cliff Hanger;DC;DC EMP;Default;Default Night;Default Night MP;End Game;Intro Screen;MP Afghan;MP Nuke;MP Nuke Aftermath;MP Outro;Near Death;Near Death MP;Thermal MP", ";");
 
@@ -90,31 +89,105 @@ initial_variable() {
 	self.syn["killstreaks"][2] = strTok("3;4;4;5;5;5;6;7;7;8;9;9;11;11;15;25", ";");
 }
 
-initial_observer() {
+initialize_menu() {
 	level endon("game_ended");
 	self endon("disconnect");
 
-	while(self has_access()) {
-		if(!self in_menu()) {
-			if(self adsButtonPressed() && self meleeButtonPressed()) {
-				if(self.interaction_enabled) {
-					self playSoundToPlayer("mp_killstreak_radar", self);
+	for(;;) {
+		event_name = self waittill_any_return("spawned_player", "player_downed", "death", "joined_spectators");
+		switch (event_name) {
+			case "spawned_player":
+				if(self isHost()) {
+					if(!self.hud_created) {
+						self freezeControls(false);
+						
+						level.player_out_of_playable_area_monitor = false;
+						self notify("stop_player_out_of_playable_area_monitor");
+
+						self thread input_manager();
+
+						self.menu["border"] = self create_shader("white", "TOP_LEFT", "TOPCENTER", (self.x_offset - 1), (self.y_offset - 1), 226, 122, self.color_theme, 1, 1);
+						self.menu["background"] = self create_shader("white", "TOP_LEFT", "TOPCENTER", self.x_offset, self.y_offset, 224, 121, (0.075, 0.075, 0.075), 1, 2);
+						self.menu["foreground"] = self create_shader("white", "TOP_LEFT", "TOPCENTER", self.x_offset, (self.y_offset + 15), 224, 106, (0.1, 0.1, 0.1), 1, 3);
+						self.menu["separator_1"] = self create_shader("white", "TOP_LEFT", "TOPCENTER", (self.x_offset + 5.5), (self.y_offset + 7.5), 42, 1, self.color_theme, 1, 10);
+						self.menu["separator_2"] = self create_shader("white", "TOP_RIGHT", "TOPCENTER", (self.x_offset + 220), (self.y_offset + 7.5), 42, 1, self.color_theme, 1, 10);
+						self.menu["cursor"] = self create_shader("white", "TOP_LEFT", "TOPCENTER", self.x_offset, 215, 224, 16, (0.15, 0.15, 0.15), 0, 4);
+
+						self.menu["title"] = self create_text("Title", self.font, self.font_scale, "TOP_LEFT", "TOPCENTER", (self.x_offset + 94.5), (self.y_offset + 3), (1, 1, 1), 1, 10);
+						self.menu["description"] = self create_text("Description", self.font, self.font_scale, "TOP_LEFT", "TOPCENTER", (self.x_offset + 5), (self.y_offset + (self.option_limit * 17.5)), (0.75, 0.75, 0.75), 0, 10);
+
+						for(i = 1; i <= self.option_limit; i++) {
+							self.menu["toggle_" + i] = self create_shader("white", "TOP_RIGHT", "TOPCENTER", (self.x_offset + 11), ((self.y_offset + 4) + (i * 15)), 8, 8, (0.25, 0.25, 0.25), 0, 9);
+							self.menu["slider_" + i] = self create_shader("white", "TOP_LEFT", "TOPCENTER", self.x_offset, (self.y_offset + (i * 15)), 224, 16, (0.25, 0.25, 0.25), 0, 5);
+							self.menu["option_" + i] = self create_text("", self.font, self.font_scale, "TOP_LEFT", "TOPCENTER", (self.x_offset + 5), ((self.y_offset + 4) + (i * 15)), (0.75, 0.75, 0.75), 1, 10);
+							self.menu["slider_text_" + i] = self create_text("", self.font, self.font_scale, "TOP_LEFT", "TOPCENTER", (self.x_offset + 132.5), ((self.y_offset + 4) + (i * 15)), (0.75, 0.75, 0.75), 0, 10);
+							self.menu["submenu_icon_" + i] = self create_shader("hud_arrow_right", "TOP_RIGHT", "TOPCENTER", (self.x_offset + 223), ((self.y_offset + 4) + (i * 15)), 7, 7, (0.5, 0.5, 0.5), 0, 10);
+						}
+
+						self.hud_created = true;
+
+						self.menu["title"] set_text("Controls");
+						self.menu["option_1"] set_text("Open: ^3[{+speed_throw}] ^7and ^3[{+melee}]");
+						self.menu["option_2"] set_text("Scroll: ^3[{+speed_throw}] ^7and ^3[{+attack}]");
+						self.menu["option_3"] set_text("Select: ^3[{+activate}] ^7Back: ^3[{+melee}]");
+						self.menu["option_4"] set_text("Sliders: ^3[{+smoke}] ^7and ^3[{+frag}]");
+						self.menu["option_5"].alpha = 0;
+						self.menu["option_6"].alpha = 0;
+						self.menu["option_7"].alpha = 0;
+
+						self.menu["border"] set_shader("white", self.menu["border"].width, 78);
+						self.menu["background"] set_shader("white", self.menu["background"].width, 76);
+						self.menu["foreground"] set_shader("white", self.menu["foreground"].width, 61);
+
+						self.controls_menu_open = true;
+
+						wait 8;
+
+						if(self.controls_menu_open) {
+							close_controls_menu();
+						}
+					}
+				}
+				break;
+			default:
+				if(!self isHost()) {
+					continue;
 				}
 
-				close_controls_menu();
-				self open_menu();
+				if(self.in_menu) {
+					self close_menu();
+				}
+				break;
+		}
+	}
+}
+
+input_manager() {
+	level endon("game_ended");
+	self endon("disconnect");
+
+	while(self isHost()) {
+		if(!self.in_menu) {
+			if(self adsButtonPressed() && self meleeButtonPressed()) {
+				if(self.controls_menu_open) {
+					close_controls_menu();
+				}
+
+				self playSoundToPlayer("mp_killstreak_radar", self);
+
+				open_menu();
 
 				while(self adsButtonPressed() && self meleeButtonPressed()) {
 					wait 0.2;
 				}
 			}
 		} else {
-			menu = self get_menu();
-			cursor = self get_cursor();
 			if(self meleeButtonPressed()) {
-				if(self.interaction_enabled) {
-					self playSoundToPlayer("copycat_steal_class", self);
-				}
+				self.saved_index[self.current_menu] = self.cursor_index;
+				self.saved_offset[self.current_menu] = self.scrolling_offset;
+				self.saved_trigger[self.current_menu] = self.previous_trigger;
+
+				self playSoundToPlayer("copycat_steal_class", self);
 
 				if(isDefined(self.previous[(self.previous.size - 1)])) {
 					self new_menu();
@@ -126,59 +199,48 @@ initial_observer() {
 					wait 0.2;
 				}
 			} else if(self adsButtonPressed() && !self attackButtonPressed() || self attackButtonPressed() && !self adsButtonPressed()) {
-				if(isDefined(self.structure) && self.structure.size >= 2) {
-					if(self.interaction_enabled) {
-						self playSoundToPlayer("mouse_over", self);
-					}
 
-					scrolling = set_variable(self attackButtonPressed(), 1, -1);
+				self playSoundToPlayer("mouse_over", self);
 
-					self set_cursor((cursor + scrolling));
-					self update_scrolling(scrolling);
-				}
+				scroll_cursor(set_variable(self attackButtonPressed(), "down", "up"));
 
-				wait (0.05 * self.scrolling_buffer);
+				wait (0.2);
 			} else if(self fragButtonPressed() && !self secondaryOffhandButtonPressed() || !self fragButtonPressed() && self secondaryOffhandButtonPressed()) {
-				if(isDefined(self.structure[cursor].array) || isDefined(self.structure[cursor].increment)) {
-					if(self.interaction_enabled) {
-						self playSoundToPlayer("ui_mp_suitcasebomb_timer", self);
-					}
 
-					scrolling = set_variable(self secondaryOffhandButtonPressed(), 1, -1);
+				self playSoundToPlayer("ui_mp_suitcasebomb_timer", self);
 
-					self update_slider(scrolling);
-					self update_progression();
+				if(isDefined(self.structure[self.cursor_index].array) || isDefined(self.structure[self.cursor_index].increment)) {
+					scroll_slider(set_variable(self secondaryOffhandButtonPressed(), "left", "right"));
 				}
 
-				wait (0.05 * self.scrolling_buffer);
+				wait (0.2);
 			} else if(self useButtonPressed()) {
-				if(isDefined(self.structure[cursor]) && isDefined(self.structure[cursor].command)) {
-					if(self.interaction_enabled) {
-						self playSoundToPlayer("mouse_click", self);
-					}
+				self.saved_index[self.current_menu] = self.cursor_index;
+				self.saved_offset[self.current_menu] = self.scrolling_offset;
+				self.saved_trigger[self.current_menu] = self.previous_trigger;
 
-					if(self.structure[cursor].command == ::new_menu) {
-						self.previous_option = self.structure[cursor].text;
-					}
-
-					if(isDefined(self.structure[cursor].array) || isDefined(self.structure[cursor].increment)) {
-						if(isDefined(self.structure[cursor].array)) {
-							cursor_selected = set_variable(isDefined(self.structure[cursor].array), self.structure[cursor].array[self.slider[(menu + "_" + cursor)]], self.slider[(menu + "_" + cursor)]);
-						} else {
-							cursor_selected = self.slider[(menu + "_" + cursor)];
-						}
-						self thread execute_function(self.structure[cursor].command, cursor_selected, self.structure[cursor].parameter_1, self.structure[cursor].parameter_2);
-					} else {
-						self thread execute_function(self.structure[cursor].command, self.structure[cursor].parameter_1, self.structure[cursor].parameter_2);
-					}
-
-					if(isDefined(self.structure[cursor]) && isDefined(self.structure[cursor].toggle)) {
-						self update_display();
-					}
+				self playSoundToPlayer("mouse_click", self);
+				
+				if(self.structure[self.cursor_index].command == ::new_menu) {
+					self.previous_option = self.structure[self.cursor_index].text;
 				}
+
+				if(isDefined(self.structure[self.cursor_index].array) || isDefined(self.structure[self.cursor_index].increment)) {
+					if(isDefined(self.structure[self.cursor_index].array)) {
+						cursor_selected = self.structure[self.cursor_index].array[self.slider[(self.current_menu + "_" + self.cursor_index)]];
+					} else {
+						cursor_selected = self.slider[(self.current_menu + "_" + (self.cursor_index))];
+					}
+					self thread execute_function(self.structure[self.cursor_index].command, cursor_selected, self.structure[self.cursor_index].parameter_1, self.structure[self.cursor_index].parameter_2, self.structure[self.cursor_index].parameter_3);
+				} else if(isDefined(self.structure[self.cursor_index]) && isDefined(self.structure[self.cursor_index].command)) {
+					self thread execute_function(self.structure[self.cursor_index].command, self.structure[self.cursor_index].parameter_1, self.structure[self.cursor_index].parameter_2, self.structure[self.cursor_index].parameter_3);
+				}
+
+				self menu_option();
+				set_options();
 
 				while(self useButtonPressed()) {
-					wait 0.1;
+					wait 0.2;
 				}
 			}
 		}
@@ -186,187 +248,83 @@ initial_observer() {
 	}
 }
 
-event_system() {
-	level endon("game_ended");
-	self endon("disconnect");
-
-	for(;;) {
-		event_name = self waittill_any_return("spawned_player", "player_downed", "death", "joined_spectators");
-		switch (event_name) {
-			case "spawned_player":
-				self.spawn_origin = self.origin;
-				self.spawn_angles = self.angles;
-				if(!isDefined(self.finalized) && self has_access()) {
-					self.finalized = true;
-
-					level.player_out_of_playable_area_monitor = false;
-					self notify("stop_player_out_of_playable_area_monitor");
-
-					if(self isHost()) {
-						self freezeControls(false);
-					}
-
-					self initial_variable();
-					self thread initial_observer();
-
-					self.controls["title"] = self create_text("Controls", self.font, self.font_scale, "TOP_LEFT", "TOPCENTER", (self.x_offset + 99), (self.y_offset + 4), self.color_theme, 1, 10);
-					self.controls["separator"][0] = self create_shader("white", "TOP_LEFT", "TOPCENTER", 181, (self.y_offset + 7.5), 37, 1, self.color_theme, 1, 10);
-					self.controls["separator"][1] = self create_shader("white", "TOP_RIGHT", "TOPCENTER", 399, (self.y_offset + 7.5), 37, 1, self.color_theme, 1, 10);
-					self.controls["border"] = self create_shader("white", "TOP_LEFT", "TOPCENTER", self.x_offset, (self.y_offset - 1), (self.width + 250), 97, self.color_theme, 1, 1);
-					self.controls["background"] = self create_shader("white", "TOP_LEFT", "TOPCENTER", (self.x_offset + 1), self.y_offset, (self.width + 248), 95, (0.075, 0.075, 0.075), 1, 2);
-					self.controls["foreground"] = self create_shader("white", "TOP_LEFT", "TOPCENTER", (self.x_offset + 1), (self.y_offset + 16), (self.width + 248), 79, (0.1, 0.1, 0.1), 1, 3);
-
-					self.controls["text"][0] = self create_text("Open: ^3[{+speed_throw}] ^7and ^3[{+melee}]", self.font, self.font_scale, "TOP_LEFT", "TOPCENTER", (self.x_offset + 4), (self.y_offset + 20), (0.75, 0.75, 0.75), 1, 10);
-					self.controls["text"][1] = self create_text("Scroll: ^3[{+speed_throw}] ^7and ^3[{+attack}]", self.font, self.font_scale, "TOP_LEFT", "TOPCENTER", (self.x_offset + 4), (self.y_offset + 40), (0.75, 0.75, 0.75), 1, 10);
-					self.controls["text"][2] = self create_text("Select: ^3[{+activate}] ^7Back: ^3[{+melee}]", self.font, self.font_scale, "TOP_LEFT", "TOPCENTER", (self.x_offset + 4), (self.y_offset + 60), (0.75, 0.75, 0.75), 1, 10);
-					self.controls["text"][3] = self create_text("Sliders: ^3[{+smoke}] ^7and ^3[{+frag}]", self.font, self.font_scale, "TOP_LEFT", "TOPCENTER", (self.x_offset + 4), (self.y_offset + 80), (0.75, 0.75, 0.75), 1, 10);
-
-					wait 8;
-
-					close_controls_menu();
-				}
-				break;
-			default:
-				if(!self has_access()) {
-					continue;
-				}
-
-				if(self in_menu()) {
-					self close_menu();
-				}
-				break;
-		}
-	}
-}
-
-session_expired() {
-	level waittill("game_ended");
-	level endon("game_ended");
-
-	foreach(index, player in level.players) {
-		if(!player has_access()) {
-			continue;
-		}
-
-		if(player in_menu()) {
-			player close_menu();
-		}
-	}
-}
-
 player_connect() {
 	level endon("game_ended");
 
 	for(;;) {
-		level waittill("connected",player);
+		level waittill("connected", player);
+
 		player.access = set_variable(player isHost(), "Host",  "None");
-		player thread event_system();
+
+		player initial_variables();
+		player thread initialize_menu();
 	}
 }
 
-player_disconnect() {
-	[[level.player_disconnect]]();
+// Hud Functions
+
+open_menu() {
+	self.in_menu = true;
+
+	set_menu_visibility(1);
+
+	self menu_option();
+	scroll_cursor();
+	set_options();
 }
 
-player_damage_callback(inflictor, attacker, damage, flags, death_reason, weapon, point, direction, hit_location, time_offset) {
-	self endon("disconnect");
+close_menu() {
+	set_menu_visibility(0);
 
-	if(isDefined(self.god_mode) && self.god_mode) {
-		return;
-	}
-
-	[[level.originalCallbackPlayerDamage]](inflictor, attacker, damage, flags, death_reason, weapon, point, direction, hit_location, time_offset);
+	self.in_menu = false;
 }
 
-player_downed(einflictor, eattacker, idamage, smeansofdeath, sweapon, vdir, shitloc, psoffsettime, deathanimduration) {
-	self notify("player_downed");
-	[[level.player_downed]](einflictor, eattacker, idamage, smeansofdeath, sweapon, vdir, shitloc, psoffsettime, deathanimduration);
+close_controls_menu() {
+	self.menu["border"] set_shader("white", self.menu["border"].width, 123);
+	self.menu["background"] set_shader("white", self.menu["background"].width, 121);
+	self.menu["foreground"] set_shader("white", self.menu["foreground"].width, 106);
+
+	self.controls_menu_open = false;
+
+	set_menu_visibility(0);
+
+	self.menu["title"] set_text("");
+	self.menu["option_1"] set_text("");
+	self.menu["option_2"] set_text("");
+	self.menu["option_3"] set_text("");
+	self.menu["option_4"] set_text("");
+
+	self.in_menu = false;
 }
 
-// Utilities
-
-in_array(array, item) {
-	if(!isDefined(array) || !isArray(array)) {
-		return;
-	}
-
-	for(a = 0; a < array.size; a++) {
-		if(array[a] == item) {
-			return true;
+set_menu_visibility(opacity) {
+	if(opacity == 0) {
+		self.menu["border"].alpha = opacity;
+		self.menu["description"].alpha = opacity;
+		for(i = 1; i <= self.option_limit; i++) {
+			self.menu["toggle_" + i].alpha = opacity;
+			self.menu["slider_" + i].alpha = opacity;
+			self.menu["submenu_icon_" + i].alpha = opacity;
 		}
 	}
 
-	return false;
-}
+	self.menu["title"].alpha = opacity;
+	self.menu["separator_1"].alpha = opacity;
+	self.menu["separator_2"].alpha = opacity;
 
-auto_archive() {
-	if(!isDefined(self.element_result)) {
-		self.element_result = 0;
+	for(i = 1; i <= self.option_limit; i++) {
+		self.menu["option_" + i].alpha = opacity;
+		self.menu["slider_text_" + i].alpha = opacity;
 	}
 
-	if(!isAlive(self) || self.element_result > 22) {
-		return true;
-	}
+	waitframe();
 
-	return false;
-}
+	self.menu["background"].alpha = opacity;
+	self.menu["foreground"].alpha = opacity;
+	self.menu["cursor"].alpha = opacity;
 
-create_rainbow_color() {
-	x = 0; y = 0;
-	r = 0; g = 0; b = 0;
-	level.rainbow_color = (0, 0, 0);
-
-	level endon("game_ended");
-
-	while(true) {
-		if(y >= 0 && y < 258) {
-			r = 255;
-			g = 0;
-			b = x;
-		} else if(y >= 258 && y < 516) {
-			r = 255 - x;
-			g = 0;
-			b = 255;
-		} else if(y >= 516 && y < 774) {
-			r = 0;
-			g = x;
-			b = 255;
-		} else if(y >= 774 && y < 1032) {
-			r = 0;
-			g = 255;
-			b = 255 - x;
-		} else if(y >= 1032 && y < 1290) {
-			r = x;
-			g = 255;
-			b = 0;
-		} else if(y >= 1290 && y < 1545) {
-			r = 255;
-			g = 255 - x;
-			b = 0;
-		}
-
-		x += 3;
-		if(x > 255) {
-			x = 0;
-		}
-
-		y += 3;
-		if(y > 1545) {
-			y = 0;
-		}
-
-		level.rainbow_color = (r/255, g/255, b/255);
-		wait 0.05;
-	}
-}
-
-start_rainbow() {
-	level endon("game_ended");
-
-	while(isDefined(self)) {
-		self fadeOverTime(.05);
-		self.color = level.rainbow_color;
-		wait 0.05;
+	if(opacity == 1) {
+		self.menu["border"].alpha = opacity;
 	}
 }
 
@@ -385,11 +343,15 @@ create_text(text, font, font_scale, align_x, align_y, x_offset, y_offset, color,
 		textElement.hideWhenInMenu = true;
 	}
 
-	if(strIsNumber(color[0]) || color != "rainbow") {
-		textElement.color = color;
+	if(isDefined(color)) {
+		if(!isString(color)) {
+			textElement.color = color;
+		} else if(color == "rainbow") {
+			textElement.color = level.rainbow_color;
+			textElement thread start_rainbow();
+		}
 	} else {
-		textElement.color = level.rainbow_color;
-		textElement thread start_rainbow();
+		textElement.color = (0, 1, 1);
 	}
 
 	if(isDefined(text)) {
@@ -419,11 +381,15 @@ create_shader(shader, align_x, align_y, x_offset, y_offset, width, height, color
 		shaderElement.hideWhenInMenu = true;
 	}
 
-	if(strIsNumber(color[0]) || color != "rainbow") {
-		shaderElement.color = color;
+	if(isDefined(color)) {
+		if(!isString(color)) {
+			shaderElement.color = color;
+		} else if(color == "rainbow") {
+			shaderElement.color = level.rainbow_color;
+			shaderElement thread start_rainbow();
+		}
 	} else {
-		shaderElement.color = level.rainbow_color;
-		shaderElement thread start_rainbow();
+		shaderElement.color = (0, 1, 1);
 	}
 
 	shaderElement setParent(level.uiParent);
@@ -479,38 +445,144 @@ set_shader(shader, width, height) {
 	self setShader(shader, width, height);
 }
 
-clean_text(text) {
-	if(!isDefined(text) || text == "") {
+auto_archive() {
+	if(!isDefined(self.element_result)) {
+		self.element_result = 0;
+	}
+
+	if(!isAlive(self) || self.element_result > 22) {
+		return true;
+	}
+
+	return false;
+}
+
+update_element_positions() {
+	self.menu["border"].x = (self.x_offset - 1);
+	self.menu["border"].y = (self.y_offset - 1);
+
+	self.menu["background"].x = self.x_offset;
+	self.menu["background"].y = self.y_offset;
+
+	self.menu["foreground"].x = self.x_offset;
+	self.menu["foreground"].y = (self.y_offset + 15);
+
+	self.menu["separator_1"].x = (self.x_offset + 5);
+	self.menu["separator_1"].y = (self.y_offset + 7.5);
+
+	self.menu["separator_2"].x = (self.x_offset + 220);
+	self.menu["separator_2"].y = (self.y_offset + 7.5);
+
+	self.menu["cursor"].x = self.x_offset;
+
+	self.menu["description"].y = (self.y_offset + (self.option_limit * 17.5));
+
+	for(i = 1; i <= self.option_limit; i++) {
+		self.menu["toggle_" + i].x = (self.x_offset + 11);
+		self.menu["toggle_" + i].y = ((self.y_offset + 4) + (i * 15));
+
+		self.menu["slider_" + i].x = self.x_offset;
+		self.menu["slider_" + i].y = (self.y_offset + (i * 15));
+
+		self.menu["option_" + i].y = ((self.y_offset + 4) + (i * 15));
+
+		self.menu["slider_text_" + i].x = (self.x_offset + 132.5);
+		self.menu["slider_text_" + i].y = ((self.y_offset + 4) + (i * 15));
+
+		self.menu["submenu_icon_" + i].x = (self.x_offset + 223);
+		self.menu["submenu_icon_" + i].y = ((self.y_offset + 4) + (i * 15));
+	}
+}
+
+// Colors
+
+create_rainbow_color() {
+	x = 0; y = 0;
+	r = 0; g = 0; b = 0;
+	level.rainbow_color = (0, 0, 0);
+
+	level endon("game_ended");
+
+	while(true) {
+		if(y >= 0 && y < 258) {
+			r = 255;
+			g = 0;
+			b = x;
+		} else if(y >= 258 && y < 516) {
+			r = 255 - x;
+			g = 0;
+			b = 255;
+		} else if(y >= 516 && y < 774) {
+			r = 0;
+			g = x;
+			b = 255;
+		} else if(y >= 774 && y < 1032) {
+			r = 0;
+			g = 255;
+			b = 255 - x;
+		} else if(y >= 1032 && y < 1290) {
+			r = x;
+			g = 255;
+			b = 0;
+		} else if(y >= 1290 && y < 1545) {
+			r = 255;
+			g = 255 - x;
+			b = 0;
+		}
+
+		x += 3;
+		if(x > 255) {
+			x = 0;
+		}
+
+		y += 3;
+		if(y > 1545) {
+			y = 0;
+		}
+
+		level.rainbow_color = (r/255, g/255, b/255);
+		wait 0.05;
+	}
+}
+
+start_rainbow() {
+	level endon("game_ended");
+	self endon("stop_rainbow");
+	self.rainbow_enabled = true;
+
+	while(isDefined(self) && self.rainbow_enabled) {
+		self fadeOverTime(.05);
+		self.color = level.rainbow_color;
+		wait 0.05;
+	}
+}
+
+// Misc Functions
+
+return_toggle(variable) {
+	return isDefined(variable) && variable;
+}
+
+set_variable(check, option_1, option_2) {
+	if(check) {
+		return option_1;
+	} else {
+		return option_2;
+	}
+}
+
+in_array(array, item) {
+	if(!isDefined(array) || !isArray(array)) {
 		return;
 	}
 
-	if(text[0] == toUpper(text[0])) {
-		if(isSubStr(text, " ") && !isSubStr(text, "_")) {
-			return text;
+	for(a = 0; a < array.size; a++) {
+		if(array[a] == item) {
+			return true;
 		}
 	}
 
-	text = strTok(toLower(text), "_");
-	new_string = "";
-	for(a = 0; a < text.size; a++) {
-		illegal = strTok("player;weapon;wpn;viewmodel;camo", ";");
-		replacement = " ";
-		if(in_array(illegal, text[a])) {
-			for(b = 0; b < text[a].size; b++) {
-				if(b != 0) {
-					new_string += text[a][b];
-				} else {
-					new_string += toUpper(text[a][b]);
-				}
-			}
-
-			if(a != (text.size - 1)) {
-				new_string += replacement;
-			}
-		}
-	}
-
-	return new_string;
+	return false;
 }
 
 clean_name(name) {
@@ -538,49 +610,6 @@ clean_name(name) {
 	return new_string;
 }
 
-destroy_element() {
-	if(!isDefined(self)) {
-		return;
-	}
-
-	self destroy();
-	if(isDefined(self.anchor)) {
-		self.anchor.element_result--;
-	}
-}
-
-destroy_all(array) {
-	if(!isDefined(array) || !isArray(array)) {
-		return;
-	}
-
-	keys = getarraykeys(array);
-	for(a = 0; a < keys.size; a++) {
-		if(isArray(array[keys[a]])) {
-			foreach(index, value in array[keys[a]]) {
-				if(isDefined(value)) {
-					value destroy_element();
-				}
-			}
-		} else {
-			if(isDefined(array[keys[a]])) {
-				array[keys[a]] destroy_element();
-			}
-		}
-	}
-}
-
-destroy_option() {
-	element = strTok("text;submenu;toggle;slider", ";");
-	for(a = 0; a < element.size; a++) {
-		if(isDefined(self.menu[element[a]]) && self.menu[element[a]].size) {
-			destroy_all(self.menu[element[a]]);
-		}
-
-		self.menu[element[a]] = [];
-	}
-}
-
 get_name() {
 	name = self.name;
 	if(name[0] != "[") {
@@ -596,792 +625,14 @@ get_name() {
 	return getSubStr(name, (a + 1));
 }
 
-has_access() {
-	return isDefined(self.access) && self.access != "None";
-}
-
-calculate_distance(origin, destination, velocity) {
-	return (distance(origin, destination) / velocity);
-}
-
-// Structure
-
-set_menu(menu) {
-	self.current_menu = set_variable(isDefined(menu), menu, "Synergy");
-}
-
-get_menu() {
-	if(!isDefined(self.current_menu)) {
-		self set_menu();
-	}
-
-	return self.current_menu;
-}
-
-set_title(title) {
-	self.current_title = set_variable(isDefined(title), title, self get_menu());
-}
-
-get_title() {
-	if(!isDefined(self.current_title)) {
-		self set_title();
-	}
-
-	return self.current_title;
-}
-
-set_cursor(index) {
-	self.cursor[self get_menu()] = set_variable(isDefined(index) && strIsNumber(index), index, 0);
-}
-
-get_cursor() {
-	if(!isDefined(self.cursor[self get_menu()])) {
-		self set_cursor();
-	}
-
-	return self.cursor[self get_menu()];
-}
-
-get_description() {
-	return self.structure[self get_cursor()].description;
-}
-
-set_state(state) {
-	self.in_menu = set_variable(isDefined(state) && state < 2, state, false);
-}
-
-in_menu() {
-	return isDefined(self.in_menu) && self.in_menu;
-}
-
-set_locked(state) {
-	self.is_locked = set_variable(isDefined(state) && state < 2, state, false);
-}
-
-is_locked() {
-	return isDefined(self.is_locked) && self.is_locked;
-}
-
-empty_option() {
-	option = strTok("Nothing To See Here!;Quiet Here, Isn't It?;Oops, Nothing Here Yet!;Bit Empty, Don't You Think?", ";");
-	return option[randomint(option.size)];
-}
-
-empty_function() {}
-
-empty_array() {
-	return [];
-}
-
-execute_function(command, parameter_1, parameter_2, parameter_3) {
+player_damage_callback(inflictor, attacker, damage, flags, death_reason, weapon, point, direction, hit_location, time_offset) {
 	self endon("disconnect");
 
-	if(!isDefined(command)) {
+	if(isDefined(self.god_mode) && self.god_mode) {
 		return;
 	}
 
-	if(isDefined(parameter_3)) {
-		return self thread[[command]](parameter_1, parameter_2, parameter_3);
-	}
-
-	if(isDefined(parameter_2)) {
-		return self thread[[command]](parameter_1, parameter_2);
-	}
-
-	if(isDefined(parameter_1)) {
-		return self thread[[command]](parameter_1);
-	}
-
-	self thread[[command]]();
-}
-
-add_menu(title, menu_size, extra) {
-	self.structure = [];
-	self set_title(title);
-
-	if(!isDefined(self get_cursor())) {
-		self set_cursor();
-	}
-
-	if(isDefined(self.menu["title"])) {
-		if(isDefined(extra)) {
-			self.menu["title"].x = (self.x_offset + 106) - menu_size - extra;
-		} else {
-			if(menu_size <= 7) {
-				self.menu["title"].x = (self.x_offset + 106) - menu_size;
-			} else {
-				self.menu["title"].x = (self.x_offset + 106) - (menu_size * 1.4);
-			}
-		}
-	}
-}
-
-add_option(text, description, command, parameter_1, parameter_2) {
-	option = spawnStruct();
-	option.text = text;
-	option.description = description;
-	if(isDefined(command)) {
-		option.command = command;
-	} else {
-		option.command = ::empty_function;
-	}
-	option.parameter_1 = parameter_1;
-	option.parameter_2 = parameter_2;
-
-	self.structure[self.structure.size] = option;
-}
-
-add_toggle(text, description, command, variable, parameter_1, parameter_2) {
-	option = spawnStruct();
-	option.text = text;
-	option.description = description;
-	if(isDefined(command)) {
-		option.command = command;
-	} else {
-		option.command = ::empty_function;
-	}
-	option.toggle = isDefined(variable) && variable;
-	option.parameter_1 = parameter_1;
-	option.parameter_2 = parameter_2;
-
-	self.structure[self.structure.size] = option;
-}
-
-add_array(text, description, command, array, parameter_1, parameter_2) {
-	option = spawnStruct();
-	option.text = text;
-	option.description = description;
-	if(isDefined(command)) {
-		option.command = command;
-	} else {
-		option.command = ::empty_function;
-	}
-	if(isDefined(array)) {
-		option.array = array;
-	} else {
-		option.array = ::empty_array;
-	}
-	option.parameter_1 = parameter_1;
-	option.parameter_2 = parameter_2;
-
-	self.structure[self.structure.size] = option;
-}
-
-add_increment(text, description, command, start, minimum, maximum, increment, parameter_1, parameter_2) {
-	option = spawnStruct();
-	option.text = text;
-	option.description = description;
-	if(isDefined(command)) {
-		option.command = command;
-	} else {
-		option.command = ::empty_function;
-	}
-	if(strIsNumber(start)) {
-		option.start = start;
-	} else {
-		option.start = 0;
-	}
-	if(strIsNumber(minimum)) {
-		option.minimum = minimum;
-	} else {
-		option.minimum = 0;
-	}
-	if(strIsNumber(maximum)) {
-		option.maximum = maximum;
-	} else {
-		option.maximum = 10;
-	}
-	if(strIsNumber(increment)) {
-		option.increment = increment;
-	} else {
-		option.increment = 1;
-	}
-	option.parameter_1 = parameter_1;
-	option.parameter_2 = parameter_2;
-
-	self.structure[self.structure.size] = option;
-}
-
-new_menu(menu) {
-	if(!isDefined(menu)) {
-		menu = self.previous[(self.previous.size - 1)];
-		self.previous[(self.previous.size - 1)] = undefined;
-	} else {
-		if(self get_menu() == "All Players") {
-			player = level.players[self get_cursor()];
-			self.selected_player = player;
-		}
-
-		self.previous[self.previous.size] = self get_menu();
-	}
-
-	self set_menu(menu);
-	self update_display();
-}
-
-// Custom Structure
-
-open_menu() {
-	self.menu["border"] = self create_shader("white", "TOP_LEFT", "TOPCENTER", self.x_offset, (self.y_offset - 1), (self.width + 250), 34, self.color_theme, 1, 1);
-	self.menu["background"] = self create_shader("white", "TOP_LEFT", "TOPCENTER", (self.x_offset + 1), self.y_offset, (self.width + 248), 32, (0.075, 0.075, 0.075), 1, 2);
-	self.menu["foreground"] = self create_shader("white", "TOP_LEFT", "TOPCENTER", (self.x_offset + 1), (self.y_offset + 16), (self.width + 248), 16, (0.1, 0.1, 0.1), 1, 3);
-	self.menu["cursor"] = self create_shader("white", "TOP_LEFT", "TOPCENTER", (self.x_offset + 1), (self.y_offset + 16), (self.width + 243), 16, (0.15, 0.15, 0.15), 1, 4);
-	self.menu["scrollbar"] = self create_shader("white", "TOP_RIGHT", "TOPCENTER", (self.x_offset + (self.menu["background"].width + 1)), (self.y_offset + 16), 4, 16, (0.25, 0.25, 0.25), 1, 4);
-
-	self set_state(true);
-	self update_display();
-}
-
-close_menu() {
-	self notify("menu_ended");
-	self set_state(false);
-	self destroy_option();
-	self destroy_all(self.menu);
-}
-
-display_title(title) {
-	title = set_variable(isDefined(title), title, self get_title());
-	if(!isDefined(self.menu["title"])) {
-		self.menu["title"] = self create_text(title, self.font, self.font_scale, "TOP_LEFT", "TOPCENTER", (self.x_offset + 99), (self.y_offset + 4), self.color_theme, 1, 10);
-		self.menu["separator"][0] = self create_shader("white", "TOP_LEFT", "TOPCENTER", (self.x_offset + 6), (self.y_offset + 7.5), int((self.menu["cursor"].width / 6)), 1, self.color_theme, 1, 10);
-		self.menu["separator"][1] = self create_shader("white", "TOP_RIGHT", "TOPCENTER", (self.x_offset + (self.menu["cursor"].width - 2) + 3), (self.y_offset + 7.5), int((self.menu["cursor"].width / 6)), 1, self.color_theme, 1, 10);
-	} else {
-		self.menu["title"] set_text(title);
-	}
-}
-
-display_description(description) {
-	description = set_variable(isDefined(description), description, self get_description());
-	if(isDefined(self.menu["description"]) && !self.description_enabled || isDefined(self.menu["description"]) && !isDefined(description)) {
-		self.menu["description"] destroy_element();
-	}
-
-	if(isDefined(description) && self.description_enabled) {
-		if(!isDefined(self.menu["description"])) {
-			self.menu["description"] = self create_text(description, self.font, self.font_scale, "TOP_LEFT", "TOPCENTER", (self.x_offset + 4), (self.y_offset + 36), (0.75, 0.75, 0.75), 1, 10);
-		} else {
-			self.menu["description"] set_text(description);
-		}
-	}
-}
-
-display_option() {
-	self destroy_option();
-	self menu_option();
-	if(!isDefined(self.structure) || !self.structure.size) {
-		self add_option(empty_option());
-	}
-
-	self display_title();
-	self display_description();
-	if(isDefined(self.structure) && self.structure.size) {
-		if(self get_cursor() >= self.structure.size) {
-			self set_cursor((self.structure.size - 1));
-		}
-
-		if(!isDefined(self.menu["toggle"][0])) {
-			self.menu["toggle"][0] = [];
-		}
-
-		menu = self get_menu();
-		cursor = self get_cursor();
-		maximum = min(self.structure.size, self.option_limit);
-		for(a = 0; a < maximum; a++) {
-			if(self get_cursor() >= int((self.option_limit / 2)) && self.structure.size > self.option_limit) {
-				if((self get_cursor() + int((self.option_limit / 2))) >= (self.structure.size - 1)) {
-					start = (self.structure.size - self.option_limit);
-				} else {
-					start = (self get_cursor() - int((self.option_limit / 2)));
-				}
-			} else {
-				start = 0;
-			}
-			index = (a + start);
-			if(isDefined(self.structure[index].command) && self.structure[index].command == ::new_menu) {
-				element_color = set_variable((cursor == index), (0.75, 0.75, 0.75), (0.5, 0.5, 0.5));
-				self.menu["submenu"][index] = self create_text(">", self.font, self.font_scale, "TOP_RIGHT", "TOPCENTER", (self.x_offset + 220), (self.y_offset + ((a * self.option_spacing) + 18.5)), element_color, 1, 10);
-			}
-
-			if(isDefined(self.structure[index].toggle)) { // Toggle Off
-				self.menu["toggle"][0][index] = self create_shader("white", "TOP_RIGHT", "TOPCENTER", (self.x_offset + 14), (self.y_offset + ((a * self.option_spacing) + 19)), 10, 10, (0.25, 0.25, 0.25), 1, 9);
-				if(self.structure[index].toggle) { // Toggle On
-					self.menu["toggle"][0][index].color = (1, 1, 1);
-				}
-			}
-
-			if(isDefined(self.structure[index].array) || isDefined(self.structure[index].increment)) {
-				if(isDefined(self.structure[index].array)) { // Array Text
-					element_color = set_variable((cursor == index), (0.75, 0.75, 0.75), (0.5, 0.5, 0.5));
-					self.menu["slider"][index] = self create_text(self.slider[(menu + "_" + index)], self.font, self.font_scale, "TOP_RIGHT", "TOPCENTER", (self.x_offset + (self.menu["cursor"].width - 2)), (self.y_offset + ((a * self.option_spacing) + 20)), element_color, 1, 10);
-				} else if(cursor == index) { // Increment Text
-					self.menu["slider"][index] = self create_text(self.slider[(menu + "_" + index)], self.font, self.font_scale, "TOP_RIGHT", "TOPCENTER", (self.x_offset + (self.menu["cursor"].width - 3)), (self.y_offset + ((a * self.option_spacing) + 20)), (0.75, 0.75, 0.75), 1, 10);
-				}
-
-				self update_slider(undefined, index);
-			}
-
-			text_string = set_variable((isDefined(self.structure[index].array) || isDefined(self.structure[index].increment)), (self.structure[index].text + ":"), self.structure[index].text);
-
-			if(isDefined(self.structure[index].toggle)) {
-				element_x_offset = (self.x_offset + 16);
-			} else {
-				if(!isDefined(self.structure[index].command)) {
-					element_x_offset = (self.x_offset + (self.menu["cursor"].width / 2));
-				} else {
-					element_x_offset = (self.x_offset + 4);
-				}
-			}
-
-			if(!isDefined(self.structure[index].command)) {
-				element_color = self.color_theme;
-			} else {
-				if((cursor == index)) {
-					element_color = (0.75, 0.75, 0.75);
-				} else {
-					element_color = (0.5, 0.5, 0.5);
-				}
-			}
-
-			self.menu["text"][index] = self create_text(text_string, self.font, self.font_scale, "TOP_LEFT", "TOPCENTER", element_x_offset, (self.y_offset + ((a * self.option_spacing) + 20)), element_color, 1, 10);
-		}
-	}
-}
-
-update_display() {
-	self display_option();
-	self update_scrollbar();
-	self update_progression();
-	self update_rescaling();
-}
-
-update_scrolling(scrolling) {
-	if(isDefined(self.structure[self get_cursor()]) && !isDefined(self.structure[self get_cursor()].command)) {
-		self set_cursor((self get_cursor() + scrolling));
-		return self update_scrolling(scrolling);
-	}
-
-	if(self get_cursor() >= self.structure.size || self get_cursor() < 0) {
-		self set_cursor(set_variable(self get_cursor() >= self.structure.size, 0, (self.structure.size - 1)));
-	}
-
-	self update_display();
-}
-
-update_slider(scrolling, cursor) {
-	menu = self get_menu();
-	cursor = set_variable(isDefined(cursor), cursor, self get_cursor());
-	scrolling = set_variable(isDefined(scrolling), scrolling, 0);
-	if(!isDefined(self.slider[(menu + "_" + cursor)])) {
-		self.slider[(menu + "_" + cursor)] = set_variable(isDefined(self.structure[cursor].array), 0, self.structure[cursor].start);
-	}
-
-	if(isDefined(self.structure[cursor].array)) {
-		if(scrolling == -1) {
-			self.slider[(menu + "_" + cursor)]++;
-		}
-
-		if(scrolling == 1) {
-			self.slider[(menu + "_" + cursor)]--;
-		}
-
-		if(self.slider[(menu + "_" + cursor)] > (self.structure[cursor].array.size - 1) || self.slider[(menu + "_" + cursor)] < 0) {
-			self.slider[(menu + "_" + cursor)] = set_variable(self.slider[(menu + "_" + cursor)] > (self.structure[cursor].array.size - 1), 0, (self.structure[cursor].array.size - 1));
-		}
-
-		if(isDefined(self.menu["slider"][cursor])) {
-			self.menu["slider"][cursor] set_text((self.structure[cursor].array[self.slider[(menu + "_" + cursor)]] + " [" + (self.slider[(menu + "_" + cursor)] + 1) + "/" + self.structure[cursor].array.size + "]"));
-		}
-	} else {
-		if(scrolling == -1) {
-			self.slider[(menu + "_" + cursor)] += self.structure[cursor].increment;
-		}
-
-		if(scrolling == 1) {
-			self.slider[(menu + "_" + cursor)] -= self.structure[cursor].increment;
-		}
-
-		if(self.slider[(menu + "_" + cursor)] > self.structure[cursor].maximum || self.slider[(menu + "_" + cursor)] < self.structure[cursor].minimum) {
-			self.slider[(menu + "_" + cursor)] = set_variable(self.slider[(menu + "_" + cursor)] > self.structure[cursor].maximum, self.structure[cursor].minimum, self.structure[cursor].maximum);
-		}
-
-		if(isDefined(self.menu["slider"][cursor])) {
-			self.menu["slider"][cursor] setValue(self.slider[(menu + "_" + cursor)]);
-		}
-	}
-}
-
-update_progression() {
-	if(isDefined(self.structure[self get_cursor()].increment) && self.slider[(self get_menu() + "_" + self get_cursor())] != 0) {
-		value = abs((self.structure[self get_cursor()].minimum - self.structure[self get_cursor()].maximum)) / (self.menu["cursor"].width);
-		width = ceil(((self.slider[(self get_menu() + "_" + self get_cursor())] - self.structure[self get_cursor()].minimum) / value));
-		if(!isDefined(self.menu["progression"])) {
-			self.menu["progression"] = self create_shader("white", "TOP_LEFT", "TOPCENTER", (self.x_offset + 1), self.menu["cursor"].y, int(width), 16, (0.3, 0.3, 0.3), 1, 5);
-		} else {
-			self.menu["progression"] set_shader(self.menu["progression"].shader, int(width), self.menu["progression"].height);
-		}
-
-		if(self.menu["progression"].y != self.menu["cursor"].y) {
-			self.menu["progression"].y = self.menu["cursor"].y;
-		}
-	} else if(isDefined(self.menu["progression"])) {
-		self.menu["progression"] destroy_element();
-	}
-}
-
-update_scrollbar() {
-	maximum = min(self.structure.size, self.option_limit);
-	height = int((maximum * self.option_spacing));
-	adjustment = set_variable(self.structure.size > self.option_limit, ((self.menu["foreground"].height / self.structure.size) * maximum), height);
-	if(height - adjustment == 0) {
-		position = set_variable(self.structure.size > self.option_limit, 0, 0);
-	} else {
-		position = set_variable(self.structure.size > self.option_limit, ((self.structure.size - 1) / (height - adjustment)), 0);
-	}
-	if(isDefined(self.menu["cursor"])) {
-		self.menu["cursor"].y = (self.menu["text"][self get_cursor()].y - 4);
-	}
-
-	if(isDefined(self.menu["scrollbar"])) {
-		self.menu["scrollbar"].y = (self.y_offset + 16);
-		if(self.structure.size > self.option_limit) {
-			self.menu["scrollbar"].y += (self get_cursor() / position);
-		}
-	}
-
-	self.menu["scrollbar"] set_shader(self.menu["scrollbar"].shader, self.menu["scrollbar"].width, int(adjustment));
-}
-
-update_rescaling() {
-	maximum = min(self.structure.size, self.option_limit);
-	height = int((maximum * self.option_spacing));
-	if(isDefined(self.menu["description"])) {
-		self.menu["description"].y = (self.y_offset + (height + 20));
-	}
-
-	description_height = set_variable(isDefined(self get_description()) && self.description_enabled, (height + 34), (height + 18));
-	self.menu["border"] set_shader(self.menu["border"].shader, self.menu["border"].width, description_height);
-	self.menu["background"] set_shader(self.menu["background"].shader, self.menu["background"].width, description_height - 2);
-	self.menu["foreground"] set_shader(self.menu["foreground"].shader, self.menu["foreground"].width, height);
-}
-
-// Option Structure
-
-menu_option() {
-	menu = self get_menu();
-	switch (menu) {
-		case "Synergy":
-			self add_menu(menu, menu.size);
-
-			self add_option("Basic Options", undefined, ::new_menu, "Basic Options");
-			self add_option("Fun Options", undefined, ::new_menu, "Fun Options");
-			self add_option("Weapon Options", undefined, ::new_menu, "Weapon Options");
-			self add_option("Give Killstreaks", undefined, ::new_menu, "Give Killstreaks");
-			self add_option("Menu Options", undefined, ::new_menu, "Menu Options");
-			self add_option("All Players", undefined, ::new_menu, "All Players");
-
-			break;
-		case "Basic Options":
-			self add_menu(menu, menu.size);
-
-			self add_toggle("God Mode", "Makes you Invincible", ::god_mode, self.god_mode);
-			self add_toggle("Frag No Clip", "Fly through the Map using (^3[{+frag}]^7)", ::frag_no_clip, self.frag_no_clip);
-			self add_toggle("Infinite Ammo", "Gives you Infinite Ammo and Infinite Grenades", ::infinite_ammo, self.infinite_ammo);
-
-			self add_option("Give All Perks", undefined, ::give_all_perks);
-			self add_option("Take All Perks", undefined, ::take_all_perks);
-
-			self add_option("Give Perks", undefined, ::new_menu, "Give Perks");
-			self add_option("Take Perks", undefined, ::new_menu, "Take Perks");
-
-			break;
-		case "Fun Options":
-			self add_menu(menu, menu.size);
-
-			self add_toggle("Forge Mode", undefined, ::forge_mode, self.forge_mode);
-
-			self add_increment("Set Speed", undefined, ::set_speed, 190, 190, 990, 20);
-			self add_increment("Set Timescale", undefined, ::set_timescale, 1, 1, 10, 1);
-			self add_increment("Set Gravity", undefined, ::set_gravity, 900, 120, 900, 20);
-
-			self add_toggle("Fullbright", "Removes all Shadows and Lighting", ::fullbright, self.fullbright);
-			self add_toggle("Third Person", undefined, ::third_person, self.third_person);
-
-			self add_option("Visions", undefined, ::new_menu, "Visions");
-
-			break;
-		case "Menu Options":
-			self add_menu(menu, menu.size);
-
-			self add_increment("Move Menu X", "Move the Menu around Horizontally", ::modify_menu_position, 0, -600, 20, 10, "x");
-			self add_increment("Move Menu Y", "Move the Menu around Vertically", ::modify_menu_position, 0, -50, 50, 10, "y");
-
-			self add_option("Rainbow Menu", "Set the Menu Outline Color to Cycling Rainbow", ::set_menu_rainbow);
-
-			self add_increment("Red", "Set the Red Value for the Menu Outline Color", ::set_menu_color, 255, 1, 255, 1, "Red");
-			self add_increment("Green", "Set the Green Value for the Menu Outline Color", ::set_menu_color, 255, 1, 255, 1, "Green");
-			self add_increment("Blue", "Set the Blue Value for the Menu Outline Color", ::set_menu_color, 255, 1, 255, 1, "Blue");
-
-			self add_toggle("Watermark", "Enable/Disable Watermark in the Top Left Corner", ::watermark, self.watermark);
-			self add_toggle("Hide UI", undefined, ::hide_ui, self.hide_ui);
-			self add_toggle("Hide Weapon", undefined, ::hide_weapon, self.hide_weapon);
-
-			break;
-		case "All Players":
-			self add_menu(menu, menu.size);
-
-			foreach(player in level.players){
-				self add_option(player.name, undefined, ::new_menu, "Player Option");
-			}
-
-			break;
-		case "Player Option":
-			self add_menu(menu, menu.size);
-
-			target = undefined;
-			foreach(player in level.players) {
-				if(player.name == self.previous_option) {
-					target = player;
-					break;
-				}
-			}
-
-			if(isDefined(target)) {
-				self add_option("Print", "Print Player Name", ::iPrintString, target);
-				self add_option("Kill", "Kill the Player", ::commit_suicide, target);
-
-				if(!target isHost()) {
-					self add_option("Kick", "Kick the Player from the Game", ::kick_player, target);
-				}
-			} else {
-				self add_option("Player not found");
-			}
-
-			break;
-		case "Give Perks":
-			self add_menu(menu, menu.size);
-
-			for(i = 0; i < self.syn["perks"][0].size; i++) {
-				self add_option(self.syn["perks"][1][i], undefined, ::give_perk, self.syn["perks"][0][i], 0);
-			}
-
-			break;
-		case "Take Perks":
-			self add_menu(menu, menu.size);
-
-			for(i = 0; i < self.syn["perks"][0].size; i++) {
-				self add_option(self.syn["perks"][1][i], undefined, ::take_perk, self.syn["perks"][0][i]);
-			}
-
-			break;
-		case "Visions":
-			self add_menu(menu, menu.size);
-
-			self add_option("None", undefined, ::set_vision, "");
-
-			for(i = 0; i < self.syn["visions"][0].size; i++) {
-				self add_option(self.syn["visions"][1][i], undefined, ::set_vision, self.syn["visions"][0][i]);
-			}
-
-			break;
-		case "Give Killstreaks":
-			self add_menu(menu, menu.size, 1);
-
-			for(i = 0; i < self.syn["killstreaks"][0].size; i++) {
-				self add_option(self.syn["killstreaks"][1][i], undefined, ::give_killstreak, self.syn["killstreaks"][0][i], self.syn["killstreaks"][2][i]);
-			}
-
-			break;
-		case "Weapon Options":
-			self add_menu(menu, menu.size);
-
-			category = get_category(getBaseWeaponName(self getCurrentWeapon()));
-
-			self add_option("Give Weapons", undefined, ::new_menu, "Give Weapons");
-
-			if(isDefined(category)) {
-				if(category != "launchers" && category != "extras") {
-					self add_option("Attachments", undefined, ::new_menu, "Attachments");
-				}
-			}
-
-			self add_option("Take Current Weapon", undefined, ::take_weapon);
-			self add_option("Drop Current Weapon", undefined, ::drop_weapon);
-
-			break;
-		case "Give Weapons":
-			self add_menu(menu, menu.size);
-
-			for(i = 0; i < self.syn["weapons"]["category"][1].size; i++) {
-				self add_option(self.syn["weapons"]["category"][1][i], undefined, ::new_menu, self.syn["weapons"]["category"][1][i]);
-			}
-
-			break;
-		case "Attachments":
-			self add_menu(menu, menu.size);
-
-			category = get_category(getBaseWeaponName(self getCurrentWeapon()));
-
-			if(isDefined(category)) {
-				if(category != "launchers" && category != "extras") {
-					self add_option("Equip Attachment", undefined, ::new_menu, "Equip Attachment");
-				}
-				if(category != "launchers" && category != "machine_pistols" && category != "shotguns" && category != "pistols" && category != "extras") {
-					self add_option("Equip Camo", undefined, ::new_menu, "Equip Camo");
-				}
-			}
-
-			break;
-		case "Equip Attachment":
-			self add_menu(menu, menu.size);
-
-			weapon_attachments = get_weapon_attachments(getBaseWeaponName(self getCurrentWeapon()));
-
-			foreach(attachment in weapon_attachments) {
-				self add_option(get_attachment_name(attachment), undefined, ::equip_attachment, attachment);
-			}
-
-			break;
-		case "Equip Camo":
-			self add_menu(menu, menu.size);
-
-			self add_increment("Equip Camo", undefined, ::equip_camo, 1, 1, 8, 1);
-			self add_toggle("Cycle Camos", undefined, ::cycle_camos, self.cycle_camos);
-
-			break;
-		case "Assault Rifles":
-			self add_menu(menu, menu.size);
-
-			load_weapons("assault_rifles");
-
-			break;
-		case "Sub Machine Guns":
-			self add_menu(menu, menu.size);
-
-			load_weapons("sub_machine_guns");
-
-			break;
-		case "Light Machine Guns":
-			self add_menu(menu, menu.size);
-
-			load_weapons("light_machine_guns");
-
-			break;
-		case "Sniper Rifles":
-			self add_menu(menu, menu.size);
-
-			load_weapons("sniper_rifles");
-
-			break;
-		case "Machine Pistols":
-			self add_menu(menu, menu.size);
-
-			load_weapons("machine_pistols");
-
-			break;
-		case "Shotguns":
-			self add_menu(menu, menu.size);
-
-			load_weapons("shotguns");
-
-			break;
-		case "Pistols":
-			self add_menu(menu, menu.size);
-
-			load_weapons("pistols");
-
-			break;
-		case "Launchers":
-			self add_menu(menu, menu.size);
-
-			load_weapons("launchers");
-
-			break;
-		case "Extras":
-			self add_menu(menu, menu.size);
-
-			load_weapons("extras");
-
-			break;
-		default:
-			if(!isDefined(self.selected_player)) {
-				self.selected_player = self;
-			}
-
-			self player_option(menu, self.selected_player);
-			break;
-	}
-}
-
-player_option(menu, player) {
-	if(!isDefined(menu) || !isDefined(player) || !isplayer(player)) {
-		menu = "Error";
-	}
-
-	switch (menu) {
-		case "Player Option":
-			self add_menu(clean_name(player get_name()));
-			break;
-		case "Error":
-			self add_menu();
-			self add_option("Oops, Something Went Wrong!", "Condition: Undefined");
-			break;
-		default:
-			error = true;
-			if(error) {
-				self add_menu("Critical Error");
-				self add_option("Oops, Something Went Wrong!", "Condition: Menu Index");
-			}
-			break;
-	}
-}
-
-// Misc Options
-
-return_toggle(variable) {
-	return isDefined(variable) && variable;
-}
-
-close_controls_menu() {
-	if(isDefined(self.controls["title"])) {
-		self.controls["title"] destroy();
-		self.controls["separator"][0] destroy();
-		self.controls["separator"][1] destroy();
-		self.controls["border"] destroy();
-		self.controls["background"] destroy();
-		self.controls["foreground"] destroy();
-
-		self.controls["text"][0] destroy();
-		self.controls["text"][1] destroy();
-		self.controls["text"][2] destroy();
-		self.controls["text"][3] destroy();
-	}
-}
-
-iPrintString(string) {
-	if(!isDefined(self.syn["string"])) {
-		self.syn["string"] = self create_text(string, "default", 1.5, "center", "top", 0, -100, (1, 1, 1), 1, 9999, false);
-	} else {
-		self.syn["string"] set_text(string);
-	}
-  self.syn["string"] notify("stop_hud_fade");
-  self.syn["string"].alpha = 1;
-  self.syn["string"] setText(string);
-  self.syn["string"] thread fade_hud(0, 2.5);
-}
-
-fade_hud(alpha, time) {
-	self endon("stop_hud_fade");
-	self fadeOverTime(time);
-	self.alpha = alpha;
-	wait time;
-}
-
-set_variable(check, option_1, option_2) {
-	if(check) {
-		return option_1;
-	} else {
-		return option_2;
-	}
+	[[level.originalCallbackPlayerDamage]](inflictor, attacker, damage, flags, death_reason, weapon, point, direction, hit_location, time_offset);
 }
 
 strIsNumber(value) {
@@ -1408,7 +659,714 @@ load_weapons(weapon_category) {
 	}
 }
 
+// Custom Structure
+
+execute_function(command, parameter_1, parameter_2, parameter_3, parameter_4) {
+	self endon("disconnect");
+
+	if(!isDefined(command)) {
+		return;
+	}
+
+	if(isDefined(parameter_4)) {
+		return self thread[[command]](parameter_1, parameter_2, parameter_3, parameter_4);
+	}
+
+	if(isDefined(parameter_3)) {
+		return self thread[[command]](parameter_1, parameter_2, parameter_3);
+	}
+
+	if(isDefined(parameter_2)) {
+		return self thread[[command]](parameter_1, parameter_2);
+	}
+
+	if(isDefined(parameter_1)) {
+		return self thread[[command]](parameter_1);
+	}
+
+	self thread[[command]]();
+}
+
+add_option(text, description, command, parameter_1, parameter_2, parameter_3) {
+	option = spawnStruct();
+	option.text = text;
+	if(isDefined(description)) {
+		option.description = description;
+	}
+	if(!isDefined(command)) {
+		option.command = ::empty_function;
+	} else {
+		option.command = command;
+	}
+	if(isDefined(parameter_1)) {
+		option.parameter_1 = parameter_1;
+	}
+	if(isDefined(parameter_2)) {
+		option.parameter_2 = parameter_2;
+	}
+	if(isDefined(parameter_3)) {
+		option.parameter_3 = parameter_3;
+	}
+
+	self.structure[self.structure.size] = option;
+}
+
+add_toggle(text, description, command, variable, parameter_1, parameter_2) {
+	option = spawnStruct();
+	option.text = text;
+	if(isDefined(description)) {
+		option.description = description;
+	}
+	if(!isDefined(command)) {
+		option.command = ::empty_function;
+	} else {
+		option.command = command;
+	}
+	option.toggle = isDefined(variable) && variable;
+	if(isDefined(parameter_1)) {
+		option.parameter_1 = parameter_1;
+	}
+	if(isDefined(parameter_2)) {
+		option.parameter_2 = parameter_2;
+	}
+
+	self.structure[self.structure.size] = option;
+}
+
+add_array(text, description, command, array, parameter_1, parameter_2, parameter_3) {
+	option = spawnStruct();
+	option.text = text;
+	if(isDefined(description)) {
+		option.description = description;
+	}
+	if(!isDefined(command)) {
+		option.command = ::empty_function;
+	} else {
+		option.command = command;
+	}
+	if(!isDefined(command)) {
+		option.array = [];
+	} else {
+		option.array = array;
+	}
+	if(isDefined(parameter_1)) {
+		option.parameter_1 = parameter_1;
+	}
+	if(isDefined(parameter_2)) {
+		option.parameter_2 = parameter_2;
+	}
+	if(isDefined(parameter_3)) {
+		option.parameter_3 = parameter_3;
+	}
+
+	self.structure[self.structure.size] = option;
+}
+
+add_increment(text, description, command, start, minimum, maximum, increment, parameter_1, parameter_2) {
+	option = spawnStruct();
+	option.text = text;
+	if(isDefined(description)) {
+		option.description = description;
+	}
+	if(!isDefined(command)) {
+		option.command = ::empty_function;
+	} else {
+		option.command = command;
+	}
+	if(strIsNumber(start)) {
+		option.start = start;
+	} else {
+		option.start = 0;
+	}
+	if(strIsNumber(minimum)) {
+		option.minimum = minimum;
+	} else {
+		option.minimum = 0;
+	}
+	if(strIsNumber(maximum)) {
+		option.maximum = maximum;
+	} else {
+		option.maximum = 10;
+	}
+	if(strIsNumber(increment)) {
+		option.increment = increment;
+	} else {
+		option.increment = 1;
+	}
+	if(isDefined(parameter_1)) {
+		option.parameter_1 = parameter_1;
+	}
+	if(isDefined(parameter_2)) {
+		option.parameter_2 = parameter_2;
+	}
+
+	self.structure[self.structure.size] = option;
+}
+
+get_title_width(title) {
+	letter_index = strTok(" ;A;B;C;D;E;F;G;H;I;J;K;L;M;N;O;P;Q;R;S;T;U;V;W;X;Y;Z", ";");
+	letter_width = strTok("5;12;11;11;10;10;10;11;11;5;10;10;9;12;11;11;10;12;10;19;11;10;11;14;10;11;10", ";");
+	title_width = 0;
+
+	for(i = 1; i < title.size; i++) {
+		for(x = 1; x < letter_index.size; x++) {
+			if(tolower(title[i]) == tolower(letter_index[x])) {
+				title_width = int(title_width) + int(letter_width[x]);
+			}
+		}
+	}
+
+	return title_width;
+}
+
+add_menu(title) {
+	self.menu["title"] set_text(title);
+
+	title_width = get_title_width(title);
+
+	self.menu["title"].x = (self.x_offset + ceil((((-0.0000124 * title_width + 0.003832) * title_width - 0.52) * title_width + 115.258) * 10) / 10);
+	self.menu["title"].y = (self.y_offset + 3);
+}
+
+new_menu(menu) {
+	if(!isDefined(menu)) {
+		menu = self.previous[(self.previous.size - 1)];
+		self.previous[(self.previous.size - 1)] = undefined;
+	} else {
+		self.previous[self.previous.size] = self.current_menu;
+	}
+
+	if(!isDefined(self.slider[(menu + "_" + (self.cursor_index))])) {
+		self.slider[(menu + "_" + (self.cursor_index))] = 0;
+	}
+
+	self.current_menu = set_variable(isDefined(menu), menu, "Synergy");
+
+	if(isDefined(self.saved_index[self.current_menu])) {
+		self.cursor_index = self.saved_index[self.current_menu];
+		self.scrolling_offset = self.saved_offset[self.current_menu];
+		self.previous_trigger = self.saved_trigger[self.current_menu];
+		self.loaded_offset = true;
+	} else {
+		self.cursor_index = 0;
+		self.scrolling_offset = 0;
+		self.previous_trigger = 0;
+	}
+
+	self menu_option();
+	scroll_cursor();
+}
+
+empty_function() {}
+
+empty_option() {
+	option = strTok("Nothing To See Here!;Quiet Here, Isn't It?;Oops, Nothing Here Yet!;Bit Empty, Don't You Think?", ";");
+	return option[randomInt(option.size)];
+}
+
+scroll_cursor(direction) {
+	maximum = self.structure.size - 1;
+	fake_scroll = false;
+
+	if(maximum < 0) {
+		maximum = 0;
+	}
+
+	if(isDefined(direction)) {
+		if(direction == "down") {
+			self.cursor_index++;
+			if(self.cursor_index > maximum) {
+				self.cursor_index = 0;
+				self.scrolling_offset = 0;
+			}
+		} else if(direction == "up") {
+			self.cursor_index--;
+			if(self.cursor_index < 0) {
+				self.cursor_index = maximum;
+				if(((self.cursor_index) + int((self.option_limit / 2))) >= (self.structure.size - 2)) {
+					self.scrolling_offset = (self.structure.size - self.option_limit);
+				}
+			}
+		}
+	} else {
+		while(self.cursor_index > maximum) {
+			self.cursor_index--;
+		}
+		self.menu["cursor"].y = int(self.y_offset + (((self.cursor_index + 1) - self.scrolling_offset) * 15));
+	}
+
+	self.previous_scrolling_offset = self.scrolling_offset;
+
+	if(!self.loaded_offset) {
+		if(self.cursor_index >= int(self.option_limit / 2) && self.structure.size > self.option_limit) {
+			if((self.cursor_index + int(self.option_limit / 2)) >= (self.structure.size - 2)) {
+				self.scrolling_offset = (self.structure.size - self.option_limit);
+				if(self.previous_trigger == 2) {
+					self.scrolling_offset--;
+				}
+				if(self.previous_scrolling_offset != self.scrolling_offset) {
+					fake_scroll = true;
+					self.previous_trigger = 1;
+				}
+			} else {
+				self.scrolling_offset = (self.cursor_index - int(self.option_limit / 2));
+				self.previous_trigger = 2;
+			}
+		} else {
+			self.scrolling_offset = 0;
+			self.previous_trigger = 0;
+		}
+	}
+
+	if(self.scrolling_offset < 0) {
+		self.scrolling_offset = 0;
+	}
+
+	if(!fake_scroll) {
+		self.menu["cursor"].y = int(self.y_offset + (((self.cursor_index + 1) - self.scrolling_offset) * 15));
+	}
+
+	if(isDefined(self.structure[self.cursor_index]) && isDefined(self.structure[self.cursor_index].description)) {
+		self.menu["description"] set_text(self.structure[self.cursor_index].description);
+		self.description_height = 15;
+
+		self.menu["description"].x = (self.x_offset + 5);
+		self.menu["description"].alpha = 1;
+	} else {
+		self.menu["description"] set_text("");
+		self.menu["description"].alpha = 0;
+		self.description_height = 0;
+	}
+
+	self.loaded_offset = false;
+	set_options();
+}
+
+scroll_slider(direction) {
+	current_slider_index = self.slider[(self.current_menu + "_" + (self.cursor_index))];
+	if(isDefined(direction)) {
+		if(isDefined(self.structure[self.cursor_index].array)) {
+			if(direction == "left") {
+				current_slider_index--;
+				if(current_slider_index < 0) {
+					current_slider_index = (self.structure[self.cursor_index].array.size - 1);
+				}
+			} else if(direction == "right") {
+				current_slider_index++;
+				if(current_slider_index > (self.structure[self.cursor_index].array.size - 1)) {
+					current_slider_index = 0;
+				}
+			}
+		} else {
+			if(direction == "left") {
+				current_slider_index -= self.structure[self.cursor_index].increment;
+				if(current_slider_index < self.structure[self.cursor_index].minimum) {
+					current_slider_index = self.structure[self.cursor_index].maximum;
+				}
+			} else if(direction == "right") {
+				current_slider_index += self.structure[self.cursor_index].increment;
+				if(current_slider_index > self.structure[self.cursor_index].maximum) {
+					current_slider_index = self.structure[self.cursor_index].minimum;
+				}
+			}
+		}
+	}
+	self.slider[(self.current_menu + "_" + (self.cursor_index))] = current_slider_index;
+	set_options();
+}
+
+set_options() {
+	for(i = 1; i <= self.option_limit; i++) {
+		self.menu["toggle_" + i].alpha = 0;
+		self.menu["slider_" + i].alpha = 0;
+		self.menu["option_" + i] set_text("");
+		self.menu["slider_text_" + i] set_text("");
+		self.menu["submenu_icon_" + i].alpha = 0;
+	}
+
+	update_element_positions();
+
+	if(isDefined(self.structure)) {
+		if(self.structure.size == 0) {
+			self add_option(empty_option());
+		}
+
+		self.maximum = int(min(self.structure.size, self.option_limit));
+
+		if(self.structure.size <= self.option_limit) {
+			self.scrolling_offset = 0;
+		}
+
+		for(i = 1; i <= self.maximum; i++) {
+			x = ((i - 1) + self.scrolling_offset);
+
+			self.menu["option_" + i] set_text(self.structure[x].text);
+
+			if(isDefined(self.structure[x].toggle)) {
+				self.menu["option_" + i].x = (self.x_offset + 13.5);
+				self.menu["option_" + i].alpha = 1;
+				self.menu["toggle_" + i].alpha = 1;
+
+				if(self.structure[x].toggle) {
+					self.menu["toggle_" + i].color = (1, 1, 1);
+				} else {
+					self.menu["toggle_" + i].color = (0.25, 0.25, 0.25);
+				}
+			} else {
+				self.menu["option_" + i].x = (self.x_offset + 5);
+				self.menu["toggle_" + i].alpha = 0;
+			}
+
+			if(isDefined(self.structure[x].array) && (self.cursor_index) == x) {
+				if(!isDefined(self.slider[(self.current_menu + "_" + x)])) {
+					self.slider[(self.current_menu + "_" + x)] = 0;
+				}
+
+				if(self.slider[(self.current_menu + "_" + x)] > (self.structure[x].array.size - 1) || self.slider[(self.current_menu + "_" + x)] < 0) {
+					self.slider[(self.current_menu + "_" + x)] = set_variable(self.slider[(self.current_menu + "_" + x)] > (self.structure[x].array.size - 1), 0, (self.structure[x].array.size - 1));
+				}
+
+				slider_text = self.structure[x].array[self.slider[(self.current_menu + "_" + x)]] + " [" + (self.slider[(self.current_menu + "_" + x)] + 1) + "/" + self.structure[x].array.size + "]";
+
+				self.menu["slider_text_" + i] set_text(slider_text);
+			} else if(isDefined(self.structure[x].increment) && (self.cursor_index) == x) {
+				value = abs((self.structure[x].minimum - self.structure[x].maximum)) / 224;
+				width = ceil((self.slider[(self.current_menu + "_" + x)] - self.structure[x].minimum) / value);
+
+				if(width >= 0) {
+					self.menu["slider_" + i] set_shader("white", int(width), 16);
+				} else {
+					self.menu["slider_" + i] set_shader("white", 0, 16);
+					self.menu["slider_" + i].alpha = 0;
+				}
+
+				if(!isDefined(self.slider[(self.current_menu + "_" + x)]) || self.slider[(self.current_menu + "_" + x)] < self.structure[x].minimum) {
+					self.slider[(self.current_menu + "_" + x)] = self.structure[x].start;
+				}
+
+				slider_value = self.slider[(self.current_menu + "_" + x)];
+				self.menu["slider_text_" + i] set_text("" + slider_value);
+				self.menu["slider_" + i].alpha = 1;
+			}
+
+			if(isDefined(self.structure[x].command) && self.structure[x].command == ::new_menu) {
+				self.menu["submenu_icon_" + i].alpha = 1;
+			}
+
+			if(!isDefined(self.structure[x].command)) {
+				self.menu["option_" + i].color = (0.75, 0.75, 0.75);
+			} else {
+				if((self.cursor_index) == x) {
+					self.menu["option_" + i].color = (0.75, 0.75, 0.75);
+					self.menu["submenu_icon_" + i].color = (0.75, 0.75, 0.75);
+				} else {
+					self.menu["option_" + i].color = (0.5, 0.5, 0.5);
+					self.menu["submenu_icon_" + i].color = (0.5, 0.5, 0.5);
+				}
+			}
+		}
+	}
+
+	menu_height = int(18 + (self.maximum * 15));
+
+	self.menu["description"].y = int((self.y_offset + 4) + ((self.maximum + 1) * 15));
+
+	self.menu["border"] set_shader("white", self.menu["border"].width, int(menu_height + self.description_height));
+	self.menu["background"] set_shader("white", self.menu["background"].width, int((menu_height - 2) + self.description_height));
+	self.menu["foreground"] set_shader("white", self.menu["foreground"].width, int(menu_height - 17));
+}
+
 // Menu Options
+
+menu_option() {
+	self.structure = [];
+	menu = self.current_menu;
+	switch(menu) {
+		case "Synergy":
+			self add_menu(menu);
+			
+			self add_option("Basic Options", undefined, ::new_menu, "Basic Options");
+			self add_option("Fun Options", undefined, ::new_menu, "Fun Options");
+			self add_option("Weapon Options", undefined, ::new_menu, "Weapon Options");
+			self add_option("Give Killstreaks", undefined, ::new_menu, "Give Killstreaks");
+			self add_option("Menu Options", undefined, ::new_menu, "Menu Options");
+			self add_option("All Players", undefined, ::new_menu, "All Players");
+
+			break;
+		case "Basic Options":
+			self add_menu(menu);
+
+			self add_toggle("God Mode", "Makes you Invincible", ::god_mode, self.god_mode);
+			self add_toggle("Frag No Clip", "Fly through the Map using (^3[{+frag}]^7)", ::frag_no_clip, self.frag_no_clip);
+			self add_toggle("Infinite Ammo", "Gives you Infinite Ammo and Infinite Grenades", ::infinite_ammo, self.infinite_ammo);
+
+			self add_option("Give All Perks", undefined, ::give_all_perks);
+			self add_option("Take All Perks", undefined, ::take_all_perks);
+
+			self add_option("Give Perks", undefined, ::new_menu, "Give Perks");
+			self add_option("Take Perks", undefined, ::new_menu, "Take Perks");
+
+			break;
+		case "Fun Options":
+			self add_menu(menu);
+
+			self add_toggle("Forge Mode", undefined, ::forge_mode, self.forge_mode);
+
+			self add_increment("Set Speed", undefined, ::set_speed, 190, 190, 990, 20);
+			self add_increment("Set Timescale", undefined, ::set_timescale, 1, 1, 10, 1);
+			self add_increment("Set Gravity", undefined, ::set_gravity, 900, 120, 900, 20);
+
+			self add_toggle("Fullbright", "Removes all Shadows and Lighting", ::fullbright, self.fullbright);
+			self add_toggle("Third Person", undefined, ::third_person, self.third_person);
+
+			self add_option("Visions", undefined, ::new_menu, "Visions");
+
+			break;
+		case "Menu Options":
+			self add_menu(menu);
+
+			self add_increment("Move Menu X", "Move the Menu around Horizontally", ::modify_menu_position, 0, -600, 20, 10, "x");
+			self add_increment("Move Menu Y", "Move the Menu around Vertically", ::modify_menu_position, 0, -50, 50, 10, "y");
+
+			self add_option("Rainbow Menu", "Set the Menu Outline Color to Cycling Rainbow", ::set_menu_rainbow);
+
+			self add_increment("Red", "Set the Red Value for the Menu Outline Color", ::set_menu_color, 255, 1, 255, 1, "Red");
+			self add_increment("Green", "Set the Green Value for the Menu Outline Color", ::set_menu_color, 255, 1, 255, 1, "Green");
+			self add_increment("Blue", "Set the Blue Value for the Menu Outline Color", ::set_menu_color, 255, 1, 255, 1, "Blue");
+
+			self add_toggle("Hide UI", undefined, ::hide_ui, self.hide_ui);
+			self add_toggle("Hide Weapon", undefined, ::hide_weapon, self.hide_weapon);
+
+			break;
+		case "All Players":
+			self add_menu(menu);
+
+			foreach(player in level.players){
+				self add_option(player.name, undefined, ::new_menu, "Player Option");
+			}
+
+			break;
+		case "Player Option":
+			self add_menu(menu);
+
+			target = undefined;
+			foreach(player in level.players) {
+				if(player.name == self.previous_option) {
+					target = player;
+					break;
+				}
+			}
+
+			if(isDefined(target)) {
+				self add_option("Print", "Print Player Name", ::iPrintString, target);
+				self add_option("Kill", "Kill the Player", ::commit_suicide, target);
+
+				if(!target isHost()) {
+					self add_option("Kick", "Kick the Player from the Game", ::kick_player, target);
+				}
+			} else {
+				self add_option("Player not found");
+			}
+
+			break;
+		case "Give Perks":
+			self add_menu(menu);
+
+			for(i = 0; i < self.syn["perks"][0].size; i++) {
+				self add_option(self.syn["perks"][1][i], undefined, ::give_perk, self.syn["perks"][0][i], 0);
+			}
+
+			break;
+		case "Take Perks":
+			self add_menu(menu);
+
+			for(i = 0; i < self.syn["perks"][0].size; i++) {
+				self add_option(self.syn["perks"][1][i], undefined, ::take_perk, self.syn["perks"][0][i]);
+			}
+
+			break;
+		case "Visions":
+			self add_menu(menu);
+
+			self add_option("None", undefined, ::set_vision, "");
+
+			for(i = 0; i < self.syn["visions"][0].size; i++) {
+				self add_option(self.syn["visions"][1][i], undefined, ::set_vision, self.syn["visions"][0][i]);
+			}
+
+			break;
+		case "Give Killstreaks":
+			self add_menu(menu, menu.size, 1);
+
+			for(i = 0; i < self.syn["killstreaks"][0].size; i++) {
+				self add_option(self.syn["killstreaks"][1][i], undefined, ::give_killstreak, self.syn["killstreaks"][0][i], self.syn["killstreaks"][2][i]);
+			}
+
+			break;
+		case "Weapon Options":
+			self add_menu(menu);
+
+			category = get_category(getBaseWeaponName(self getCurrentWeapon()));
+
+			self add_option("Give Weapons", undefined, ::new_menu, "Give Weapons");
+
+			if(isDefined(category)) {
+				if(category != "launchers" && category != "extras") {
+					self add_option("Attachments", undefined, ::new_menu, "Attachments");
+				}
+			}
+
+			self add_option("Take Current Weapon", undefined, ::take_weapon);
+			self add_option("Drop Current Weapon", undefined, ::drop_weapon);
+
+			break;
+		case "Give Weapons":
+			self add_menu(menu);
+
+			for(i = 0; i < self.syn["weapons"]["category"][1].size; i++) {
+				self add_option(self.syn["weapons"]["category"][1][i], undefined, ::new_menu, self.syn["weapons"]["category"][1][i]);
+			}
+
+			break;
+		case "Attachments":
+			self add_menu(menu);
+
+			category = get_category(getBaseWeaponName(self getCurrentWeapon()));
+
+			if(isDefined(category)) {
+				if(category != "launchers" && category != "extras") {
+					self add_option("Equip Attachment", undefined, ::new_menu, "Equip Attachment");
+				}
+				if(category != "launchers" && category != "machine_pistols" && category != "shotguns" && category != "pistols" && category != "extras") {
+					self add_option("Equip Camo", undefined, ::new_menu, "Equip Camo");
+				}
+			}
+
+			break;
+		case "Equip Attachment":
+			self add_menu(menu);
+
+			weapon_attachments = get_weapon_attachments(getBaseWeaponName(self getCurrentWeapon()));
+
+			foreach(attachment in weapon_attachments) {
+				self add_option(get_attachment_name(attachment), undefined, ::equip_attachment, attachment);
+			}
+
+			break;
+		case "Equip Camo":
+			self add_menu(menu);
+
+			self add_increment("Equip Camo", undefined, ::equip_camo, 1, 1, 8, 1);
+			self add_toggle("Cycle Camos", undefined, ::cycle_camos, self.cycle_camos);
+
+			break;
+		case "Assault Rifles":
+			self add_menu(menu);
+
+			load_weapons("assault_rifles");
+
+			break;
+		case "Sub Machine Guns":
+			self add_menu(menu);
+
+			load_weapons("sub_machine_guns");
+
+			break;
+		case "Light Machine Guns":
+			self add_menu(menu);
+
+			load_weapons("light_machine_guns");
+
+			break;
+		case "Sniper Rifles":
+			self add_menu(menu);
+
+			load_weapons("sniper_rifles");
+
+			break;
+		case "Machine Pistols":
+			self add_menu(menu);
+
+			load_weapons("machine_pistols");
+
+			break;
+		case "Shotguns":
+			self add_menu(menu);
+
+			load_weapons("shotguns");
+
+			break;
+		case "Pistols":
+			self add_menu(menu);
+
+			load_weapons("pistols");
+
+			break;
+		case "Launchers":
+			self add_menu(menu);
+
+			load_weapons("launchers");
+
+			break;
+		case "Extras":
+			self add_menu(menu);
+
+			load_weapons("extras");
+
+			break;
+		default:
+			if(!isDefined(self.selected_player)) {
+				self.selected_player = self;
+			}
+
+			self player_option(menu, self.selected_player);
+			break;
+	}
+}
+
+player_option(menu, player) {
+	if(!isDefined(menu) || !isDefined(player) || !isPlayer(player)) {
+		menu = "Error";
+	}
+
+	switch (menu) {
+		case "Player Option":
+			self add_menu(clean_name(player get_name()));
+			break;
+		case "Error":
+			self add_menu();
+			self add_option("Oops, Something Went Wrong!", "Condition: Undefined");
+			break;
+		default:
+			error = true;
+			if(error) {
+				self add_menu("Critical Error");
+				self add_option("Oops, Something Went Wrong!", "Condition: Menu Index");
+			}
+			break;
+	}
+}
+
+// Menu Options
+
+iPrintString(string) {
+	if(!isDefined(self.syn["string"])) {
+		self.syn["string"] = self create_text(string, "default", 1.5, "center", "top", 0, -100, (1, 1, 1), 1, 9999, false);
+	} else {
+		self.syn["string"] set_text(string);
+	}
+  self.syn["string"] notify("stop_hud_fade");
+  self.syn["string"].alpha = 1;
+  self.syn["string"] setText(string);
+  self.syn["string"] thread fade_hud(0, 2.5);
+}
+
+fade_hud(alpha, time) {
+	self endon("stop_hud_fade");
+	self fadeOverTime(time);
+	self.alpha = alpha;
+	wait time;
+}
 
 modify_menu_position(offset, axis) {
 	if(axis == "x") {
@@ -1423,55 +1381,48 @@ modify_menu_position(offset, axis) {
 set_menu_rainbow() {
 	if(!isString(self.color_theme)) {
 		self.color_theme = "rainbow";
-		self close_menu();
-		self open_menu();
-		self.menu["title"].x = 264.2;
+		self.menu["border"] thread start_rainbow();
+		self.menu["separator_1"] thread start_rainbow();
+		self.menu["separator_2"] thread start_rainbow();
+		self.menu["border"].color = self.color_theme;
+		self.menu["separator_1"].color = self.color_theme;
+		self.menu["separator_2"].color = self.color_theme;
 	}
 }
 
 set_menu_color(value, color) {
 	if(color == "Red") {
 		self.menu_color_red = value;
-		iPrintString(color + " Changed to " + value);
+		iPrintln(color + " Changed to " + value);
 	} else if(color == "Green") {
 		self.menu_color_green = value;
-		iPrintString(color + " Changed to " + value);
+		iPrintln(color + " Changed to " + value);
 	} else if(color == "Blue") {
 		self.menu_color_blue = value;
-		iPrintString(color + " Changed to " + value);
+		iPrintln(color + " Changed to " + value);
 	} else {
-		iPrintString(value + " | " + color);
+		iPrintln(value + " | " + color);
 	}
 	self.color_theme = (self.menu_color_red / 255, self.menu_color_green / 255, self.menu_color_blue / 255);
-	self close_menu();
-	self open_menu();
-	self.menu["title"].x = 264.2;
-}
-
-watermark() {
-	self.watermark = !return_toggle(self.watermark);
-	if(self.watermark) {
-		iPrintString("Watermark [^2ON^7]");
-		if(!isDefined(self.syn["watermark"])) {
-			self.syn["watermark"] = self create_text("SyndiShanX", self.font, 2, "TOP_LEFT", "TOPCENTER", -425, -25, self.color_theme, 1, 3);
-		} else {
-			self.syn["watermark"].alpha = 1;
-			self.syn["watermark"].color = self.color_theme;
-		}
-	} else {
-		iPrintString("Watermark [^1OFF^7]");
-		self.syn["watermark"].alpha = 0;
-	}
+	self.menu["border"] notify("stop_rainbow");
+	self.menu["separator_1"] notify("stop_rainbow");
+	self.menu["separator_2"] notify("stop_rainbow");
+	self.menu["border"].rainbow_enabled = false;
+	self.menu["separator_1"].rainbow_enabled = false;
+	self.menu["separator_2"].rainbow_enabled = false;
+	self.menu["border"].color = self.color_theme;
+	self.menu["separator_1"].color = self.color_theme;
+	self.menu["separator_2"].color = self.color_theme;
 }
 
 hide_ui() {
 	self.hide_ui = !return_toggle(self.hide_ui);
-	setDvar("\cg_draw2D", !self.hide_ui);
+	setDvar("cg_draw2d", !self.hide_ui);
 }
 
 hide_weapon() {
 	self.hide_weapon = !return_toggle(self.hide_weapon);
-	setDvar("\cg_drawGun", !self.hide_weapon);
+	setDvar("cg_drawgun", !self.hide_weapon);
 }
 
 // Basic Options
@@ -1788,6 +1739,30 @@ equip_attachment(attachment) {
 	}
 }
 
+get_weapon_attachments(weapon) {
+	attachments = [];
+
+	for(i = 11;; i++) {
+		column = tableLookup("mp/statsTable.csv", 4, weapon, i);
+
+		if(!isDefined(column) || column == "") {
+			break;
+		}
+
+		attachments[attachments.size] = column;
+	}
+
+	return alphabetize(attachments);
+}
+
+get_attachment_name(attachment) {
+	for(i = 0; i < self.syn["attachments"][0].size; i++) {
+		if(attachment == self.syn["attachments"][0][i]) {
+			return self.syn["attachments"][1][i];
+		}
+	}
+}
+
 equip_camo(camo_index) {
 	weapon = self getCurrentWeapon();
 	self take_weapon();
@@ -1832,29 +1807,5 @@ drop_weapon() {
 	if(isDefined(self getCurrentWeapon())) {
 		self dropItem(self getCurrentWeapon());
 		self switchToWeapon(self getWeaponsListPrimaries()[0]);
-	}
-}
-
-get_weapon_attachments(weapon) {
-	attachments = [];
-
-	for(i = 11;; i++) {
-		column = tableLookup("mp/statsTable.csv", 4, weapon, i);
-
-		if(!isDefined(column) || column == "") {
-			break;
-		}
-
-		attachments[attachments.size] = column;
-	}
-
-	return alphabetize(attachments);
-}
-
-get_attachment_name(attachment) {
-	for(i = 0; i < self.syn["attachments"][0].size; i++) {
-		if(attachment == self.syn["attachments"][0][i]) {
-			return self.syn["attachments"][1][i];
-		}
 	}
 }
