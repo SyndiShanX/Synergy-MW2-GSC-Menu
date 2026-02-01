@@ -43,7 +43,7 @@ initial_variables() {
 	self.previous_scrolling_offset = 0;
 	self.description_height = 0;
 	self.previous_option = undefined;
-	
+
 	self.syn["visions"][0] = strTok("ac130;ac130_inverted;aftermath;airplane;airport;airport_death;airport_exterior;airport_green;airport_intro;airport_stairs;ambush;armada;armada_water;bigcity_destroyed;blackout;blackout_nvg;bog;boneyard;bridge;cargoship;cheat_bw;cheat_bw_contrast;cheat_bw_invert;cheat_chaplinnight;cheat_contrast;cheat_invert;cheat_invert_contrast;cliffhanger;dcemp;dcemp_emp;default;default_night;default_night_mp;end_game;introscreen;mp_afghan;mpnuke;mpnuke_aftermath;mpoutro;near_death;near_death_mp;thermal_mp", ";");
 	self.syn["visions"][1] = strTok("AC-130;AC-130 inverted;Aftermath;Airplane;Airport;Airport Death;Airport Exterior;Airport Green;Airport Intro;Airport Stairs;Ambush;Armada;Armada Water;Big City Destroyed;Blackout;Blackout Nvg;Bog;Boneyard;Bridge;Cargo Ship;Cheat BW;Cheat BW Contrast;Cheat BW Invert;Cheat Chaplin Night;Cheat Contrast;Cheat Invert;Cheat Invert Contrast;Cliff Hanger;DC;DC EMP;Default;Default Night;Default Night MP;End Game;Intro Screen;MP Afghan;MP Nuke;MP Nuke Aftermath;MP Outro;Near Death;Near Death MP;Thermal MP", ";");
 
@@ -100,7 +100,7 @@ initialize_menu() {
 				if(self isHost()) {
 					if(!self.hud_created) {
 						self freezeControls(false);
-						
+
 						level.player_out_of_playable_area_monitor = false;
 						self notify("stop_player_out_of_playable_area_monitor");
 
@@ -220,7 +220,7 @@ input_manager() {
 				self.saved_trigger[self.current_menu] = self.previous_trigger;
 
 				self playSoundToPlayer("mouse_click", self);
-				
+
 				if(self.structure[self.cursor_index].command == ::new_menu) {
 					self.previous_option = self.structure[self.cursor_index].text;
 				}
@@ -1084,7 +1084,7 @@ menu_option() {
 	switch(menu) {
 		case "Synergy":
 			self add_menu(menu);
-			
+
 			self add_option("Basic Options", undefined, ::new_menu, "Basic Options");
 			self add_option("Fun Options", undefined, ::new_menu, "Fun Options");
 			self add_option("Weapon Options", undefined, ::new_menu, "Weapon Options");
