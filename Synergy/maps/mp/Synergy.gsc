@@ -366,6 +366,15 @@ create_text(text, font, font_scale, align_x, align_y, x_offset, y_offset, color,
 	return textElement;
 }
 
+set_text(text) {
+	if(!isDefined(self) || !isDefined(text)) {
+		return;
+	}
+
+	self.text = text;
+	self setText(text);
+}
+
 create_shader(shader, align_x, align_y, x_offset, y_offset, width, height, color, alpha, z_index, hide_when_in_menu) {
 	shaderElement = newClientHudElem(self);
 	shaderElement.elemType = "icon";
@@ -399,15 +408,6 @@ create_shader(shader, align_x, align_y, x_offset, y_offset, width, height, color
 
 	self.element_result++;
 	return shaderElement;
-}
-
-set_text(text) {
-	if(!isDefined(self) || !isDefined(text)) {
-		return;
-	}
-
-	self.text = text;
-	self setText(text);
 }
 
 set_shader(shader, width, height) {
@@ -1355,10 +1355,10 @@ iPrintString(string) {
 	} else {
 		self.syn["string"] set_text(string);
 	}
-  self.syn["string"] notify("stop_hud_fade");
-  self.syn["string"].alpha = 1;
-  self.syn["string"] setText(string);
-  self.syn["string"] thread fade_hud(0, 2.5);
+	self.syn["string"] notify("stop_hud_fade");
+	self.syn["string"].alpha = 1;
+	self.syn["string"] setText(string);
+	self.syn["string"] thread fade_hud(0, 2.5);
 }
 
 fade_hud(alpha, time) {
@@ -1767,10 +1767,10 @@ equip_camo(camo_index) {
 	weapon = self getCurrentWeapon();
 	self take_weapon();
 
-  wait(0.05);
+	wait(0.05);
 
 	self _giveWeapon(weapon, int(camo_index));
-  self switchToWeapon(weapon);
+	self switchToWeapon(weapon);
 }
 
 cycle_camos() {
